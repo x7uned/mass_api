@@ -15,6 +15,7 @@ model User {
   avatar       String?
   description  String?
   status       String
+  friends      Int[]
   lastOnline   DateTime?
   isOnline     Boolean   @default(false)
   sentMessages Message[] @relation("SentMessages")

@@ -72,7 +72,7 @@ export class ContactsService {
 
   async addContact(userId: number, body: any) {
     try {
-      if (!body.contactId && body.contactId == userId) {
+      if (!body.contactId || body.contactId === userId) {
         throw new UnauthorizedException('Invalid contactId');
       }
 
@@ -89,10 +89,51 @@ export class ContactsService {
         throw new UnauthorizedException('Contact already exists');
       }
 
+      // Проверка, что контакт не является другом уже для текущего пользователя
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { friends: true },
+      });
+
+      if (user.friends.includes(body.contactId)) {
+        throw new UnauthorizedException('Contact already in friends list');
+      }
+
+      // Проверка, что контакт не является другом для другого пользователя
+      const contactUser = await this.prisma.user.findUnique({
+        where: { id: body.contactId },
+        select: { friends: true },
+      });
+
+      if (contactUser.friends.includes(userId)) {
+        throw new UnauthorizedException(
+          'You are already friends with this contact',
+        );
+      }
+
+      // Создаем контакт
       const contact = await this.prisma.contact.create({
         data: {
           userId: userId,
           contactId: body.contactId,
+        },
+      });
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          friends: {
+            push: body.contactId,
+          },
+        },
+      });
+
+      await this.prisma.user.update({
+        where: { id: body.contactId },
+        data: {
+          friends: {
+            push: userId,
+          },
         },
       });
 

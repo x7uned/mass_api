@@ -31,14 +31,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleDisconnect(client: Socket) {
     const userId = client['userId'];
     if (userId) {
+      console.log(userId, 'Disconnecting');
       this.clients.delete(userId);
 
       await this.prisma.user.update({
         where: { id: userId },
         data: { isOnline: false, lastOnline: new Date() },
       });
-
-      client.emit('contactStatus', { isOnline: false, lastOnline: new Date() });
     }
   }
 
@@ -57,27 +56,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const decoded = this.jwtService.verify(actualToken);
       const userId = decoded.id;
 
-      // Проверка, существует ли уже клиент с таким userId
-      if (this.clients.has(userId)) {
-        console.log(
-          `Client with userId: ${userId} is already connected. Disconnecting the new connection.`,
-        );
-        client.disconnect();
-        return;
-      }
-
       client['userId'] = userId;
 
-      // Обновление статуса пользователя в базе данных
       await this.prisma.user.update({
         where: { id: userId },
         data: { isOnline: true },
       });
 
-      // Сообщение клиенту о его статусе
       client.emit('contactStatus', { isOnline: true });
 
-      // Добавление клиента в карту для дальнейшего использования
       this.clients.set(userId, client);
       console.log(
         `Client ${client.id} authenticated and added to map with userId: ${userId}`,
@@ -94,31 +81,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('getStatus')
-  async handleGetUserStatus(
-    client: Socket,
-    payload: { contactId: number },
-  ): Promise<void> {
-    const { contactId } = payload;
+  async handleGetUserStatus(client: Socket): Promise<void> {
+    const userId = client['userId'];
 
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: contactId },
-      include: { contact: true },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
     });
 
-    if (!contact) {
-      console.error('Contact not found:', contactId);
+    if (!user) {
+      console.error('User not found:', user);
       return;
     }
 
-    const userId = contact.contactId;
-    const isOnline = this.clients.has(userId);
-    const status = {
-      contactId,
-      online: isOnline,
-      lastOnline: !isOnline ? contact.contact.lastOnline : undefined,
-    };
+    const statuses = [];
 
-    client.emit('contactStatus', status);
+    user.friends.forEach((id) => {
+      const friendSocket = this.clients.get(id);
+      if (friendSocket) {
+        statuses.push(id);
+      }
+    });
+
+    client.emit('userStatuses', statuses);
   }
 
   @SubscribeMessage('message')
@@ -135,7 +119,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // Проверка существования контакта
     const contact = await this.prisma.contact.findUnique({
       where: { id: contactId },
     });
@@ -145,7 +128,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // Проверка, существует ли `ownerId` как пользователь
     const owner = await this.prisma.user.findUnique({
       where: { id: ownerId },
     });
@@ -163,7 +145,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         contactId,
       });
 
-      // Создание сообщения
       const message = await this.prisma.message.create({
         data: {
           content: obj.content,
@@ -172,7 +153,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      // Обновление счетчика сообщений для контакта
       await this.prisma.contact.update({
         where: { id: contactId },
         data: {
@@ -182,7 +162,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      // Отправка сообщения получателю
       const receiverClient = this.clients.get(
         contact.userId === ownerId ? contact.contactId : contact.userId,
       );
@@ -190,7 +169,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         receiverClient.emit('message', message);
       }
 
-      // Отправка сообщения отправителю
       client.emit('message', message);
     } catch (error) {
       console.error('Error handling message:', error);
