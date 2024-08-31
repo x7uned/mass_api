@@ -4,7 +4,6 @@ import { AppService } from './app.service';
 import { AuthMiddleware } from './auth/auth.middleware';
 import { AuthModule } from './auth/auth.module';
 import { AuthService } from './auth/auth.service';
-import { ChatGateway } from './chat/chat.gateway';
 import { ChatModule } from './chat/chat.module';
 import { ContactsController } from './contacts/contacts.controller';
 import { ContactsModule } from './contacts/contacts.module';
@@ -16,13 +15,7 @@ import { PrismaModule } from './prisma/prisma.module';
 @Module({
   imports: [AuthModule, PrismaModule, ChatModule, JwtModule, ContactsModule],
   controllers: [AppController],
-  providers: [
-    AppService,
-    AuthService,
-    ChatGateway,
-    JwtService,
-    ContactsService,
-  ],
+  providers: [AppService, AuthService, JwtService, ContactsService],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
