@@ -193,8 +193,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       where: { id: contactId },
     });
 
-    if (!contact) {
-      console.error('Contact not found:', contactId);
+    if (
+      !contact ||
+      (contact.userId !== senderId && contact.contactId !== senderId)
+    ) {
+      console.error('Contact not found:', senderId);
       return;
     }
 
