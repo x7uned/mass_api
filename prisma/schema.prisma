@@ -38,6 +38,7 @@ model Contact {
   userId       Int
   contactId    Int
   updatedAt    DateTime  @updatedAt
+  lastMessage  String    @default("")
   messageCount Int       @default(0)
   user         User      @relation("UserContacts", fields: [userId], references: [id])
   contact      User      @relation("ContactOf", fields: [contactId], references: [id])

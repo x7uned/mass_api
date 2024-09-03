@@ -45,11 +45,20 @@ export class ContactsService {
 
   async getContactInfo(userId: number, contactId: number) {
     try {
-      const contact = await this.prisma.contact.findUnique({
-        where: {
-          id: contactId,
-        },
-      });
+      let contact;
+
+      if (contactId === 0) {
+        contact = await this.prisma.contact.findFirst({
+          where: {
+            contactId: 1,
+            userId: userId,
+          },
+        });
+      } else {
+        contact = await this.prisma.contact.findUnique({
+          where: { id: contactId },
+        });
+      }
 
       const user = await this.prisma.user.findUnique({
         where: {

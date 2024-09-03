@@ -35,6 +35,21 @@ export class AuthService {
       },
     });
 
+    if (!user) {
+      throw new UnauthorizedException('Something went wrong');
+    }
+
+    const notes = await this.prisma.contact.create({
+      data: {
+        userId: user.id,
+        contactId: 1,
+      },
+    });
+
+    if (!notes) {
+      throw new UnauthorizedException('Something went wrong NOTES');
+    }
+
     return { success: true, user };
   }
 

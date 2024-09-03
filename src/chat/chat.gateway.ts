@@ -113,15 +113,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const ownerId = client['userId'];
     const contactId = obj.contactId;
 
-    if (!ownerId || !contactId) {
+    if (!ownerId || contactId == undefined) {
       console.log('No ownerId or contactId, disconnecting client');
       client.disconnect();
       return;
     }
 
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: contactId },
-    });
+    let contact;
+
+    if (contactId === 0) {
+      contact = await this.prisma.contact.findFirst({
+        where: {
+          contactId: 1,
+          userId: ownerId,
+        },
+      });
+    } else {
+      contact = await this.prisma.contact.findUnique({
+        where: { id: contactId },
+      });
+    }
 
     if (!contact) {
       console.error('Contact not found:', contactId);
@@ -139,26 +150,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      console.log({
-        content: obj.content,
-        ownerId,
-        contactId,
-      });
-
       const message = await this.prisma.message.create({
         data: {
           content: obj.content,
           ownerId,
-          contactId,
+          contactId: contact.id,
         },
       });
 
       await this.prisma.contact.update({
-        where: { id: contactId },
+        where: { id: contact.id },
         data: {
           messageCount: {
             increment: 1,
           },
+          lastMessage: obj.content,
         },
       });
 
@@ -175,6 +181,47 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('fetchContacts')
+  async handleFetchContacts(client: Socket): Promise<void> {
+    const userId = client['userId'];
+
+    try {
+      const contacts = await this.prisma.contact.findMany({
+        where: {
+          OR: [{ userId }, { contactId: userId }],
+        },
+        take: 12,
+      });
+
+      const contactResults = await Promise.all(
+        contacts.map(async (contact) => {
+          const user = await this.prisma.user.findUnique({
+            where: {
+              id:
+                contact.userId === userId ? contact.contactId : contact.userId,
+            },
+          });
+
+          if (user) {
+            delete user.password;
+          }
+
+          return {
+            user,
+            ...contact,
+            contactId:
+              contact.userId === userId ? contact.contactId : contact.userId,
+          };
+        }),
+      );
+
+      client.emit('fetchContacts', contactResults);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      client.disconnect();
+    }
+  }
+
   @SubscribeMessage('fetchMessages')
   async handleFetchMessages(
     client: Socket,
@@ -183,15 +230,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderId = client['userId'];
     const contactId = msg.contactId;
 
-    if (!senderId || !contactId) {
+    if (!senderId && contactId == undefined) {
       console.log('disconnecting client');
       client.disconnect();
       return;
     }
 
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: contactId },
-    });
+    let contact;
+
+    if (contactId === 0) {
+      contact = await this.prisma.contact.findFirst({
+        where: {
+          contactId: 1,
+          userId: senderId,
+        },
+      });
+    } else {
+      contact = await this.prisma.contact.findUnique({
+        where: { id: contactId },
+      });
+    }
 
     if (
       !contact ||
@@ -204,7 +262,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const messages = await this.prisma.message.findMany({
         where: {
-          contactId,
+          contactId: contact.id,
         },
         orderBy: { createdAt: 'asc' },
         take: 48,
