@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Contact } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -7,36 +8,14 @@ export class ContactsService {
 
   async getContact(userId: number) {
     try {
-      const contacts = await this.prisma.contact.findMany({
-        where: {
-          OR: [{ userId }, { contactId: userId }],
-        },
+      const contacts = await this.prisma.user.findMany({
+        where: { id: userId },
+        select: { contacts: true },
         take: 12,
       });
 
-      const contactResults = await Promise.all(
-        contacts.map(async (contact) => {
-          const user = await this.prisma.user.findUnique({
-            where: {
-              id:
-                contact.userId === userId ? contact.contactId : contact.userId,
-            },
-          });
-
-          if (user) {
-            delete user.password;
-          }
-
-          return {
-            user,
-            ...contact,
-            contactId:
-              contact.userId === userId ? contact.contactId : contact.userId,
-          };
-        }),
-      );
-
-      return { success: true, contactResults };
+      console.log(contacts);
+      return { success: true, contacts };
     } catch (error) {
       console.error(error);
       throw new UnauthorizedException('Error find contacts');
@@ -45,34 +24,24 @@ export class ContactsService {
 
   async getContactInfo(userId: number, contactId: number) {
     try {
-      let contact;
+      let contact: Contact;
 
       if (contactId === 0) {
         contact = await this.prisma.contact.findFirst({
           where: {
-            contactId: 1,
-            userId: userId,
+            ownerId: 1,
+            members: { some: { id: userId } },
           },
+          include: { members: true },
         });
       } else {
         contact = await this.prisma.contact.findUnique({
           where: { id: contactId },
+          include: { members: true },
         });
       }
 
-      const user = await this.prisma.user.findUnique({
-        where: {
-          id: contact.userId === userId ? contact.contactId : contact.userId,
-        },
-      });
-
-      if (user) {
-        delete user.password;
-      } else {
-        throw new UnauthorizedException('Error find user');
-      }
-
-      return { success: true, contact, user };
+      return { success: true, contact };
     } catch (error) {
       console.error(error);
       throw new UnauthorizedException('Error find contacts');
@@ -81,16 +50,19 @@ export class ContactsService {
 
   async addContact(userId: number, body: any) {
     try {
-      if (!body.contactId || body.contactId === userId) {
-        throw new UnauthorizedException('Invalid contactId');
+      const { contactIds } = body;
+
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        throw new UnauthorizedException('Invalid contactIds');
       }
 
+      // Включаем текущего пользователя в список участников
+      const allParticipants = [...new Set([userId, ...contactIds])];
+
+      // Проверяем, не существует ли уже контакт (группы или чата с таким участником)
       const existingContact = await this.prisma.contact.findFirst({
         where: {
-          OR: [
-            { userId, contactId: body.contactId },
-            { userId: body.contactId, contactId: userId },
-          ],
+          OR: [{ ownerId: userId }, { members: { some: { id: userId } } }],
         },
       });
 
@@ -98,50 +70,47 @@ export class ContactsService {
         throw new UnauthorizedException('Contact already exists');
       }
 
-      // Проверка, что контакт не является другом уже для текущего пользователя
+      // Добавляем каждого участника в друзья, если его нет
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { friends: true },
       });
 
-      if (user.friends.includes(body.contactId)) {
-        throw new UnauthorizedException('Contact already in friends list');
+      for (const contactId of allParticipants) {
+        if (!user.friends.includes(contactId)) {
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+              friends: {
+                push: contactId,
+              },
+            },
+          });
+        }
+
+        const contactUser = await this.prisma.user.findUnique({
+          where: { id: contactId },
+          select: { friends: true },
+        });
+
+        if (contactUser && !contactUser.friends.includes(userId)) {
+          await this.prisma.user.update({
+            where: { id: contactId },
+            data: {
+              friends: {
+                push: userId,
+              },
+            },
+          });
+        }
       }
 
-      // Проверка, что контакт не является другом для другого пользователя
-      const contactUser = await this.prisma.user.findUnique({
-        where: { id: body.contactId },
-        select: { friends: true },
-      });
-
-      if (contactUser.friends.includes(userId)) {
-        throw new UnauthorizedException(
-          'You are already friends with this contact',
-        );
-      }
-
-      // Создаем контакт
+      // Создаем контакт (группу) с указанными участниками
       const contact = await this.prisma.contact.create({
         data: {
-          userId: userId,
-          contactId: body.contactId,
-        },
-      });
-
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          friends: {
-            push: body.contactId,
-          },
-        },
-      });
-
-      await this.prisma.user.update({
-        where: { id: body.contactId },
-        data: {
-          friends: {
-            push: userId,
+          ownerId: userId,
+          members: {
+            connect: allParticipants.map((id: number) => ({ id })),
           },
         },
       });

@@ -39,10 +39,15 @@ export class AuthService {
       throw new UnauthorizedException('Something went wrong');
     }
 
+    delete user.password;
+
     const notes = await this.prisma.contact.create({
       data: {
-        userId: user.id,
-        contactId: 1,
+        ownerId: 1,
+        name: 'Notes',
+        avatar:
+          'https://i.pinimg.com/236x/46/56/5b/46565b2e707b945bda72a0a2b072f7b6.jpg',
+        members: { connect: [{ id: user.id }, { id: 1 }] },
       },
     });
 

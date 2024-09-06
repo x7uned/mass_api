@@ -20,7 +20,7 @@ model User {
   isOnline     Boolean   @default(false)
   sentMessages Message[] @relation("SentMessages")
   contacts     Contact[] @relation("UserContacts")
-  contactOf    Contact[] @relation("ContactOf")
+  contactOf    Contact[] @relation("ContactMembers")
 }
 
 model Message {
@@ -35,12 +35,13 @@ model Message {
 
 model Contact {
   id           Int       @id @default(autoincrement())
-  userId       Int
-  contactId    Int
+  ownerId      Int
+  name         String    @default("New Chat")
+  avatar       String?
+  members      User[]    @relation("ContactMembers")
   updatedAt    DateTime  @updatedAt
   lastMessage  String    @default("")
   messageCount Int       @default(0)
-  user         User      @relation("UserContacts", fields: [userId], references: [id])
-  contact      User      @relation("ContactOf", fields: [contactId], references: [id])
+  owner        User      @relation("UserContacts", fields: [ownerId], references: [id])
   messages     Message[] @relation("ContactMessages")
 }
