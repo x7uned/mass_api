@@ -180,11 +180,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const contacts = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { contacts: { take: 12 }, contactOf: { take: 12 } },
+        select: { contactOf: { take: 12 } },
       });
 
-      const result = [...contacts.contacts, ...contacts.contactOf];
-
+      const result = [...contacts.contactOf];
+      console.log(result);
       client.emit('fetchContacts', result);
     } catch (error) {
       console.error('Error fetching messages:', error);

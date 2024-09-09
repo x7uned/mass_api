@@ -56,59 +56,55 @@ export class ContactsService {
         throw new UnauthorizedException('Invalid contactIds');
       }
 
-      // Включаем текущего пользователя в список участников
       const allParticipants = [...new Set([userId, ...contactIds])];
 
-      // Проверяем, не существует ли уже контакт (группы или чата с таким участником)
-      const existingContact = await this.prisma.contact.findFirst({
-        where: {
-          OR: [{ ownerId: userId }, { members: { some: { id: userId } } }],
-        },
-      });
+      for (const contact of allParticipants) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { friends: true },
+        });
+        console.log('sos1', contact);
+        const contactId = contact;
 
-      if (existingContact) {
-        throw new UnauthorizedException('Contact already exists');
-      }
-
-      // Добавляем каждого участника в друзья, если его нет
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { friends: true },
-      });
-
-      for (const contactId of allParticipants) {
+        // Если контакт не находится в друзьях пользователя, добавляем его
         if (!user.friends.includes(contactId)) {
+          user.friends.push(contactId); // Добавляем контакт в массив friends
+          console.log('sos2', contactId);
+
+          // Обновляем массив друзей
           await this.prisma.user.update({
             where: { id: userId },
             data: {
-              friends: {
-                push: contactId,
-              },
+              friends: user.friends, // Перезаписываем весь массив
             },
           });
         }
 
+        // Получаем контактного пользователя
         const contactUser = await this.prisma.user.findUnique({
           where: { id: contactId },
           select: { friends: true },
         });
 
+        // Если пользователя нет в друзьях контакта, добавляем
         if (contactUser && !contactUser.friends.includes(userId)) {
+          contactUser.friends.push(userId); // Добавляем пользователя в массив друзей контакта
+
+          // Обновляем массив друзей контактного пользователя
           await this.prisma.user.update({
             where: { id: contactId },
             data: {
-              friends: {
-                push: userId,
-              },
+              friends: contactUser.friends, // Перезаписываем весь массив
             },
           });
         }
       }
 
-      // Создаем контакт (группу) с указанными участниками
+      // Создаем новый контакт (группу)
       const contact = await this.prisma.contact.create({
         data: {
           ownerId: userId,
+          avatar: 'https://ui-avatars.com/api/?name=NewChat',
           members: {
             connect: allParticipants.map((id: number) => ({ id })),
           },
