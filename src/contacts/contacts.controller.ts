@@ -12,7 +12,13 @@ export class ContactsController {
   @Post('create')
   async create(@Body() body: any, @Req() req: Request) {
     const userId = Number(req['user'].id);
-    return this.contactsService.addContact(userId, body);
+    return this.contactsService.createContact(userId, body);
+  }
+
+  @Post('group')
+  async group(@Body() body: any, @Req() req: Request) {
+    const userId = Number(req['user'].id);
+    return this.contactsService.createGroup(userId, body);
   }
 
   @Get('getInfo')

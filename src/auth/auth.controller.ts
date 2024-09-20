@@ -30,6 +30,12 @@ export class AuthController {
     return this.authService.findUser(userId);
   }
 
+  @Get('friends')
+  async friends(@Req() req: Request) {
+    const userId = req['user'].id;
+    return this.authService.getFriends(userId);
+  }
+
   @Get('many')
   async findMany(@Query() query: QueryFindUsers) {
     const username = query.username;

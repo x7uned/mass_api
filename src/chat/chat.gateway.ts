@@ -141,12 +141,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    contact.members.forEach((element) => {
+      delete element.password;
+    });
+
     try {
       const message = await this.prisma.message.create({
         data: {
           content: obj.content,
           ownerId,
           contactId: contact.id,
+        },
+        select: {
+          content: true,
+          createdAt: true,
+          contactId: true,
+          owner: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
+          },
         },
       });
 
@@ -160,10 +176,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      console.log(message);
-
-      for (let i = 0; i < contact.members.length; i++) {
-        const receiverClient = this.clients.get(contact.members[i].id);
+      for (const key of contact.members) {
+        const receiverClient = this.clients.get(key.id);
         if (receiverClient) {
           receiverClient.emit('message', message);
         }
@@ -184,7 +198,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
 
       const result = [...contacts.contactOf];
-      console.log(result);
       client.emit('fetchContacts', result);
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -195,10 +208,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('fetchMessages')
   async handleFetchMessages(
     client: Socket,
-    msg: { contactId: number },
+    msg: { contactId: number; gap?: number }, // Добавили gap
   ): Promise<void> {
     const userId = client['userId'];
     const contactId = msg.contactId;
+    const gap = Number.isInteger(msg.gap) ? msg.gap : 0; // Проверяем, что gap является числом
+
+    console.log(gap);
 
     if (!userId && contactId == undefined) {
       console.log('disconnecting client');
@@ -215,12 +231,54 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ownerId: 1,
             members: { some: { id: userId } },
           },
-          include: { members: true, messages: true },
+          include: {
+            members: true,
+            messages: {
+              skip: gap * 24, // Пропускаем сообщения в соответствии с gap
+              take: 24, // Ограничиваем до 24 сообщений
+              orderBy: {
+                createdAt: 'desc', // Получаем последние сообщения
+              },
+              select: {
+                content: true,
+                createdAt: true,
+                contactId: true,
+                owner: {
+                  select: {
+                    username: true,
+                    avatar: true,
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
         });
       } else {
         contact = await this.prisma.contact.findUnique({
           where: { id: contactId },
-          include: { members: true, messages: true },
+          include: {
+            members: true,
+            messages: {
+              skip: gap * 24, // Пропускаем сообщения в соответствии с gap
+              take: 24, // Ограничиваем до 24 сообщений
+              orderBy: {
+                createdAt: 'desc', // Получаем последние сообщения
+              },
+              select: {
+                content: true,
+                createdAt: true,
+                contactId: true,
+                owner: {
+                  select: {
+                    username: true,
+                    avatar: true,
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
         });
       }
 
@@ -228,7 +286,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.error('Access Denied:', userId);
       }
 
-      client.emit('fetchMessages', contact.messages);
+      if (gap === 0) {
+        client.emit('fetchMessages', contact.messages);
+      } else {
+        client.emit('fetchNewMessages', contact.messages);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
       client.disconnect();

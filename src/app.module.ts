@@ -19,6 +19,8 @@ import { PrismaModule } from './prisma/prisma.module';
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AuthMiddleware).forRoutes('/auth/me', ContactsController);
+    consumer
+      .apply(AuthMiddleware)
+      .forRoutes('/auth/me', '/auth/friends', ContactsController);
   }
 }

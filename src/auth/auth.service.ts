@@ -115,4 +115,24 @@ export class AuthService {
 
     return { users, success: true };
   }
+
+  async getFriends(userId: number) {
+    // Получаем список друзей
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { friends: true },
+    });
+
+    const friends = await Promise.all(
+      user.friends.map(async (id) => {
+        const friend = await this.prisma.user.findUnique({
+          where: { id: id },
+          select: { username: true, avatar: true, id: true },
+        });
+        return friend;
+      }),
+    );
+
+    return { success: true, friends };
+  }
 }
